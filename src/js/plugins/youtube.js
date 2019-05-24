@@ -47,6 +47,8 @@ function getHost(config) {
     return undefined;
 }
 
+let youtubeCallbacks;
+
 const youtube = {
     setup() {
         // Add embed class for responsive
@@ -56,26 +58,32 @@ const youtube = {
         if (is.object(window.YT) && is.function(window.YT.Player)) {
             youtube.ready.call(this);
         } else {
-            // Load the API
-            loadScript(this.config.urls.youtube.sdk).catch(error => {
-                this.debug.warn('YouTube API failed to load', error);
-            });
 
-            // Setup callback for the API
-            // YouTube has it's own system of course...
-            window.onYouTubeReadyCallbacks = window.onYouTubeReadyCallbacks || [];
+            if (!youtubeCallbacks) {
+                let onYouTubeIframeAPIReady = window.onYouTubeIframeAPIReady;
 
-            // Add to queue
-            window.onYouTubeReadyCallbacks.push(() => {
+                youtubeCallbacks = [];
+
+                // Set callback to process queue
+                window.onYouTubeIframeAPIReady = () => {
+                    if (onYouTubeIframeAPIReady && is.function(onYouTubeIframeAPIReady)) {
+                        onYouTubeIframeAPIReady.call(this);
+                    }
+
+                    youtubeCallbacks.forEach(callback => {
+                        callback();
+                    });
+                };
+
+                // Load the API
+                loadScript(this.config.urls.youtube.sdk).catch(error => {
+                    this.debug.warn('YouTube API failed to load', error);
+                });
+            }
+
+            youtubeCallbacks.push(() => {
                 youtube.ready.call(this);
             });
-
-            // Set callback to process queue
-            window.onYouTubeIframeAPIReady = () => {
-                window.onYouTubeReadyCallbacks.forEach(callback => {
-                    callback();
-                });
-            };
         }
     },
 
@@ -108,10 +116,10 @@ const youtube = {
     ready() {
         const player = this;
         // Ignore already setup (race condition)
-        const currentId = player.media.getAttribute('id');
-        if (!is.empty(currentId) && currentId.startsWith('youtube-')) {
+        if (player.media || (!is.empty(currentId) && currentId.startsWith('youtube-'))) {
             return;
         }
+        const currentId = player.media.getAttribute('id');
 
         // Get the source URL or ID
         let source = player.media.getAttribute('src');
